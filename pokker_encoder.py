@@ -130,10 +130,12 @@ def _build_meta(idx, total, set_id, off, chunk_len, full_len, name, creator) -> 
 
 
 def _load_font(size: int):
+    # arial.ttf renders Thai as boxes on most Windows — use Tahoma/Cordia first
     for path in [
-        "C:/Windows/Fonts/arial.ttf",
         "C:/Windows/Fonts/tahoma.ttf",
-        "C:/Windows/Fonts/verdana.ttf",
+        "C:/Windows/Fonts/cordia.ttc",
+        "C:/Windows/Fonts/angsana.ttc",
+        "C:/Windows/Fonts/arial.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     ]:
         try:
