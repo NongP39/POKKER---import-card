@@ -14,6 +14,12 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
 try:
+    from tkinterdnd2 import TkinterDnD, DND_FILES
+    _DND = True
+except ImportError:
+    _DND = False
+
+try:
     from PIL import Image, ImageDraw, ImageFont
     _PIL = True
 except ImportError:
@@ -105,16 +111,14 @@ def read_json(path: str) -> list:
         return data
     if isinstance(data, dict):
         for key in ("cards", "data", "items"):
-            if isinstance(data[key], list):
+            if key in data and isinstance(data[key], list):
                 return data[key]
     raise ValueError("JSON ต้องเป็น Array ของการ์ด หรือ {\"cards\": [...]}")
 
 
 # ── Encoder ───────────────────────────────────────────────────────────────────
 
-def _build_meta(idx: int, total: int, set_id: int,
-                off: int, chunk_len: int, full_len: int,
-                name: str, creator: str) -> bytes:
+def _build_meta(idx, total, set_id, off, chunk_len, full_len, name, creator) -> bytes:
     nb   = name.encode("utf-8")[:32].ljust(32, b"\x00")
     cb   = creator.encode("utf-8")[:32].ljust(32, b"\x00")
     meta = (MAGIC
@@ -139,8 +143,7 @@ def _load_font(size: int):
     return ImageFont.load_default()
 
 
-def encode_cards(cards: list, name: str, creator: str,
-                 out_dir: str, on_progress=None) -> list:
+def encode_cards(cards, name, creator, out_dir, on_progress=None) -> list:
     payload  = json.dumps(cards, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     full_len = len(payload)
     n        = max(1, math.ceil(full_len / MAX_PAYLOAD))
@@ -189,12 +192,14 @@ def encode_cards(cards: list, name: str, creator: str,
 # ── GUI ───────────────────────────────────────────────────────────────────────
 
 class App:
-    BG    = "#f6f0e8"
-    RED   = "#d54a22"
-    BROWN = "#8a6d56"
-    DARK  = "#3a2c20"
-    GREEN = "#4a7c3f"
-    FONT  = "Segoe UI"
+    BG      = "#f6f0e8"
+    BG_DROP = "#fff4ed"
+    BG_DRAG = "#ffe0d0"
+    RED     = "#d54a22"
+    BROWN   = "#8a6d56"
+    DARK    = "#3a2c20"
+    GREEN   = "#4a7c3f"
+    FONT    = "Segoe UI"
 
     def __init__(self, root: tk.Tk):
         self.root    = root
@@ -205,7 +210,7 @@ class App:
         root.configure(bg=self.BG)
         root.resizable(False, False)
 
-        W, H = 500, 610
+        W, H = 500, 680
         sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
         root.geometry(f"{W}x{H}+{(sw-W)//2}+{(sh-H)//2}")
 
@@ -226,43 +231,58 @@ class App:
     # ── Build UI ──────────────────────────────────────────────────────────────
 
     def _build(self):
-        # ── Header ──
+        # ── Header banner ──
         hdr = tk.Frame(self.root, bg=self.RED)
         hdr.pack(fill=tk.X)
         tk.Label(hdr, text="🃏  Pokker Card Encoder",
-                 font=self._f(17, True), fg="white", bg=self.RED, pady=12).pack()
+                 font=self._f(17, True), fg="white", bg=self.RED, pady=10).pack()
         tk.Label(hdr, text="แปลง Excel เป็นภาพสำหรับ import เข้าเกม Pokker",
-                 font=self._f(10), fg="#ffd0c0", bg=self.RED).pack(pady=(0, 12))
+                 font=self._f(10), fg="#ffd0c0", bg=self.RED).pack(pady=(0, 10))
 
         body = tk.Frame(self.root, bg=self.BG, padx=22)
-        body.pack(fill=tk.BOTH, expand=True, pady=8)
+        body.pack(fill=tk.BOTH, expand=True, pady=6)
 
-        # ── Step 1: File ──────────────────────────────────────────────────
+        # ── STEP 1 ──────────────────────────────────────────────────────────
         self._heading(body, "1", "เลือกไฟล์การ์ด")
 
-        drop = tk.Frame(body, bg="#fff4ed", relief="solid", bd=2, cursor="hand2")
-        drop.pack(fill=tk.X, pady=(0, 6))
+        # Drop zone
+        self.drop = tk.Frame(body, bg=self.BG_DROP, relief="solid", bd=2, cursor="hand2")
+        self.drop.pack(fill=tk.X, pady=(0, 4))
 
-        self.lbl_drop_icon = tk.Label(drop, text="📂",
-                                       font=self._f(32), bg="#fff4ed", cursor="hand2", pady=4)
-        self.lbl_drop_icon.pack()
-        tk.Label(drop, text="คลิกเพื่อเลือกไฟล์ Excel หรือ JSON",
-                 font=self._f(12, True), fg=self.RED, bg="#fff4ed", cursor="hand2").pack()
-        tk.Label(drop, text=".xlsx  ·  .xls  ·  .json",
-                 font=self._f(10), fg=self.BROWN, bg="#fff4ed", cursor="hand2").pack()
-        tk.Label(drop, text="คอลัมน์: ลำดับ  ·  หมวดหมู่  ·  เป้าหมาย  ·  เนื้อหา  ·  โทษ",
-                 font=self._f(9), fg="#bbb", bg="#fff4ed", cursor="hand2", pady=8).pack()
+        self.lbl_icon = tk.Label(self.drop, text="📂",
+                                  font=self._f(28), bg=self.BG_DROP, cursor="hand2", pady=2)
+        self.lbl_icon.pack()
 
-        self._bind_click(drop, self._browse)
+        self.lbl_drop_main = tk.Label(self.drop,
+                                       text="คลิกหรือลากไฟล์มาวางที่นี่",
+                                       font=self._f(12, True), fg=self.RED,
+                                       bg=self.BG_DROP, cursor="hand2")
+        self.lbl_drop_main.pack()
+
+        tk.Label(self.drop, text=".xlsx  ·  .xls  ·  .json",
+                 font=self._f(10), fg=self.BROWN, bg=self.BG_DROP, cursor="hand2").pack()
+        tk.Label(self.drop,
+                 text="คอลัมน์: ลำดับ  ·  หมวดหมู่  ·  เป้าหมาย  ·  เนื้อหา  ·  โทษ",
+                 font=self._f(9), fg="#bbb", bg=self.BG_DROP, cursor="hand2", pady=6).pack()
+
+        # Click-to-browse binding
+        self._bind_click(self.drop, self._browse)
+
+        # Drag-and-drop binding
+        if _DND:
+            self.drop.drop_target_register(DND_FILES)
+            self.drop.dnd_bind("<<DragEnter>>", self._drag_enter)
+            self.drop.dnd_bind("<<DragLeave>>", self._drag_leave)
+            self.drop.dnd_bind("<<Drop>>",      self._on_drop)
 
         self.lbl_file  = tk.Label(body, text="", font=self._f(10),
                                    fg=self.DARK, bg=self.BG, anchor="w")
         self.lbl_file.pack(fill=tk.X)
         self.lbl_count = tk.Label(body, text="", font=self._f(10, True),
                                    fg=self.GREEN, bg=self.BG, anchor="w")
-        self.lbl_count.pack(fill=tk.X, pady=(0, 10))
+        self.lbl_count.pack(fill=tk.X, pady=(0, 6))
 
-        # ── Step 2: Metadata ──────────────────────────────────────────────
+        # ── STEP 2 ──────────────────────────────────────────────────────────
         self._heading(body, "2", "ข้อมูลชุดการ์ด")
 
         self.var_name    = tk.StringVar()
@@ -270,16 +290,16 @@ class App:
         self._input(body, "ชื่อชุดการ์ด *",          self.var_name)
         self._input(body, "ชื่อผู้สร้าง  (ไม่บังคับ)", self.var_creator)
 
-        # ── Step 3: Encode ────────────────────────────────────────────────
+        # ── STEP 3 ──────────────────────────────────────────────────────────
         self._heading(body, "3", "สร้างภาพ PNG")
 
         self.btn_go = tk.Button(
             body, text="🖼️   สร้างภาพ",
             font=self._f(13, True), bg=self.RED, fg="white",
             activebackground="#b83d1b", activeforeground="white",
-            relief="flat", bd=0, pady=12, cursor="hand2",
+            relief="flat", bd=0, pady=11, cursor="hand2",
             state="disabled", command=self._encode)
-        self.btn_go.pack(fill=tk.X, pady=(0, 8))
+        self.btn_go.pack(fill=tk.X, pady=(0, 6))
 
         s = ttk.Style()
         s.theme_use("default")
@@ -290,13 +310,13 @@ class App:
 
         self.lbl_status = tk.Label(body, text="", font=self._f(10),
                                     fg=self.BROWN, bg=self.BG, anchor="w")
-        self.lbl_status.pack(fill=tk.X, pady=(0, 8))
+        self.lbl_status.pack(fill=tk.X, pady=(0, 6))
 
         self.btn_open = tk.Button(
             body, text="📂   เปิดโฟลเดอร์ผลลัพธ์",
             font=self._f(11), bg=self.GREEN, fg="white",
             activebackground="#3a6030", activeforeground="white",
-            relief="flat", bd=0, pady=9, cursor="hand2",
+            relief="flat", bd=0, pady=8, cursor="hand2",
             state="disabled", command=self._open_folder)
         self.btn_open.pack(fill=tk.X)
 
@@ -304,7 +324,7 @@ class App:
 
     def _heading(self, parent, num, text):
         f = tk.Frame(parent, bg=self.BG)
-        f.pack(fill=tk.X, pady=(14, 6))
+        f.pack(fill=tk.X, pady=(10, 5))
         tk.Label(f, text=f" {num} ", font=self._f(9, True),
                  bg=self.RED, fg="white", padx=4).pack(side=tk.LEFT)
         tk.Label(f, text=f"  {text}", font=self._f(11, True),
@@ -315,12 +335,40 @@ class App:
                  fg=self.DARK, bg=self.BG, anchor="w").pack(fill=tk.X)
         tk.Entry(parent, textvariable=var, font=self._f(11),
                  bg="white", relief="solid", bd=1, fg=self.DARK).pack(
-            fill=tk.X, pady=(2, 10), ipady=7)
+            fill=tk.X, pady=(2, 8), ipady=7)
 
     def _bind_click(self, widget, cmd):
         widget.bind("<Button-1>", lambda _: cmd())
         for child in widget.winfo_children():
             child.bind("<Button-1>", lambda _: cmd())
+
+    # ── Drag-and-drop events ──────────────────────────────────────────────────
+
+    def _drag_enter(self, event):
+        self.drop.config(bg=self.BG_DRAG, relief="solid")
+        for child in self.drop.winfo_children():
+            child.config(bg=self.BG_DRAG)
+        self.lbl_drop_main.config(text="วางไฟล์ที่นี่ได้เลย!")
+
+    def _drag_leave(self, event):
+        self._reset_drop_zone()
+
+    def _reset_drop_zone(self):
+        self.drop.config(bg=self.BG_DROP)
+        for child in self.drop.winfo_children():
+            child.config(bg=self.BG_DROP)
+        if self.cards:
+            self.lbl_drop_main.config(text="คลิกหรือลากไฟล์มาวางที่นี่")
+        else:
+            self.lbl_drop_main.config(text="คลิกหรือลากไฟล์มาวางที่นี่")
+
+    def _on_drop(self, event):
+        path = event.data.strip()
+        # Windows wraps paths with spaces in {}
+        if path.startswith("{") and path.endswith("}"):
+            path = path[1:-1]
+        self._reset_drop_zone()
+        self._load(path)
 
     # ── Actions ───────────────────────────────────────────────────────────────
 
@@ -352,12 +400,13 @@ class App:
                 return
 
             cats = len(set(c["Category"] for c in self.cards))
-            self.lbl_drop_icon.config(text="✅")
+            self.lbl_icon.config(text="✅")
             self.lbl_file.config(text=f"📄  {Path(path).name}", fg=self.DARK)
             self.lbl_count.config(text=f"✅  {len(self.cards)} ใบ  ·  {cats} หมวดหมู่")
             if not self.var_name.get():
                 self.var_name.set(Path(path).stem)
             self.btn_go.config(state="normal")
+            self.lbl_status.config(text="", fg=self.BROWN)
 
         except Exception as e:
             messagebox.showerror("อ่านไฟล์ไม่สำเร็จ", str(e))
@@ -425,7 +474,7 @@ class App:
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
-    root = tk.Tk()
+    root = TkinterDnD.Tk() if _DND else tk.Tk()
     App(root)
     root.mainloop()
 
