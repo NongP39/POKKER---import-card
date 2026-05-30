@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pokker Card Encoder</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #f6f0e8; color: #3a2c20; min-height: 100vh; }
+
+  .container { max-width: 720px; margin: 0 auto; padding: 24px 16px; }
+
+  h1 { color: #d54a22; font-size: 26px; margin-bottom: 4px; }
+  .subtitle { color: #8a6d56; font-size: 14px; margin-bottom: 28px; }
+
+  .card { background: #fff; border-radius: 16px; padding: 20px; margin-bottom: 16px;
+          box-shadow: 0 2px 12px rgba(0,0,0,.08); }
+  .card h2 { font-size: 15px; color: #8a6d56; margin-bottom: 14px; text-transform: uppercase;
+             letter-spacing: .5px; }
+
+  label { display: block; font-size: 13px; color: #5c4033; margin-bottom: 4px; font-weight: 600; }
+  input[type=text], select {
+    width: 100%; padding: 10px 14px; border: 1.5px solid #e4cfa8; border-radius: 10px;
+    font-size: 15px; background: #fdf8f2; color: #3a2c20; outline: none; margin-bottom: 14px;
+    transition: border .2s;
+  }
+  input[type=text]:focus, select:focus { border-color: #d54a22; }
+
+  .upload-zone {
+    border: 2.5px dashed #e4cfa8; border-radius: 12px; padding: 32px 20px;
+    text-align: center; cursor: pointer; transition: border-color .2s, background .2s;
+    margin-bottom: 14px;
+  }
+  .upload-zone:hover, .upload-zone.drag { border-color: #d54a22; background: #fff8f4; }
+  .upload-zone p { color: #8a6d56; font-size: 14px; pointer-events: none; }
+  .upload-zone strong { color: #d54a22; }
+  #file-input { display: none; }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 12px 28px; border-radius: 100px; font-size: 16px; font-weight: 700;
+    cursor: pointer; border: none; transition: all .15s; width: 100%;
+  }
+  .btn-primary { background: #d54a22; color: #fff; }
+  .btn-primary:hover { background: #b83d1b; }
+  .btn-primary:disabled { background: #ccc; cursor: not-allowed; }
+
+  .preview-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .preview-table th { background: #f6f0e8; padding: 8px 10px; text-align: left;
+                      color: #8a6d56; border-bottom: 1.5px solid #e4cfa8; }
+  .preview-table td { padding: 7px 10px; border-bottom: 1px solid #f0e8dc; vertical-align: top; }
+  .preview-table tr:last-child td { border: none; }
+
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 11px;
+           font-weight: 700; color: #fff; }
+
+  .result-images { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+  .result-item { text-align: center; }
+  .result-item canvas { border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.15); display: block; }
+  .result-item a { display: block; margin-top: 6px; font-size: 12px; color: #d54a22;
+                   text-decoration: none; font-weight: 700; }
+
+  .alert { padding: 12px 16px; border-radius: 10px; font-size: 14px; margin-bottom: 12px; }
+  .alert-warn { background: #fff4e0; border-left: 4px solid #e69c00; color: #7a5500; }
+  .alert-info { background: #e8f4ff; border-left: 4px solid #3f7fb0; color: #1a4d70; }
+  .alert-ok   { background: #e8f5e8; border-left: 4px solid #4a7c3f; color: #2a4a20; }
+
+  .stat { display: inline-block; background: #f6f0e8; border-radius: 8px;
+          padding: 4px 12px; font-size: 13px; margin-right: 8px; color: #5c4033; }
+  .stat strong { color: #d54a22; }
+
+  .chip { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px;
+          color: #fff; font-weight: 600; margin: 1px; }
+
+  #status-section { display: none; }
+  #result-section { display: none; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <h1>🃏 Pokker Card Encoder</h1>
+  <p class="subtitle">แปลง Excel หรือ JSON เป็นภาพสำหรับ import เข้าเกม Pokker บน Android</p>
+
+  <!-- Step 1: File upload -->
+  <div class="card">
+    <h2>1. อัปโหลดไฟล์การ์ด</h2>
+    <div class="upload-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+      <p>📁 คลิกหรือลากไฟล์มาวางที่นี่</p>
+      <p><strong>.xlsx / .xls</strong> (Excel) หรือ <strong>.json</strong></p>
+      <p style="font-size:12px;margin-top:8px;color:#aaa">คอลัมน์ Excel: <strong>ลำดับ · หมวดหมู่ · เป้าหมาย · เนื้อหา · โทษ</strong></p>
+    </div>
+    <input type="file" id="file-input" accept=".xlsx,.xls,.json">
+    <div id="file-info" style="display:none">
+      <span class="stat">📄 ไฟล์: <strong id="fname"></strong></span>
+      <span class="stat">🃏 การ์ด: <strong id="card-count"></strong> ใบ</span>
+      <span class="stat">📂 หมวด: <strong id="cat-count"></strong></span>
+    </div>
+  </div>
+
+  <!-- Step 2: Metadata -->
+  <div class="card">
+    <h2>2. ข้อมูลชุดการ์ด</h2>
+    <label>ชื่อชุดการ์ด *</label>
+    <input type="text" id="set-name" placeholder="เช่น ชุดปาร์ตี้สนุก">
+    <label>ชื่อผู้สร้าง / เจ้าของ</label>
+    <input type="text" id="creator" placeholder="เช่น แอน (ถ้าไม่ใส่ก็ได้)">
+  </div>
+
+  <!-- Step 3: Generate -->
+  <div class="card">
+    <h2>3. สร้างภาพ</h2>
+    <div id="status-section">
+      <div id="multi-warn" class="alert alert-warn" style="display:none"></div>
+      <div id="gen-info"   class="alert alert-info"  style="display:none"></div>
+    </div>
+    <button class="btn btn-primary" id="btn-encode" disabled onclick="doEncode()">
+      🖼️ สร้างภาพ PNG
+    </button>
+  </div>
+
+  <!-- Result -->
+  <div class="card" id="result-section">
+    <h2>4. ดาวน์โหลดภาพ</h2>
+    <div class="alert alert-ok" id="result-msg"></div>
+    <div class="result-images" id="result-images"></div>
+  </div>
+
+  <!-- Preview -->
+  <div class="card" id="preview-card" style="display:none">
+    <h2>ตัวอย่างการ์ด (20 ใบแรก)</h2>
+    <div id="preview-table-wrap" style="overflow-x:auto"></div>
+  </div>
+
+</div>
+
+<!-- SheetJS for Excel reading -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"
+        onerror="xlsxFallback()"></script>
+<script>
+function xlsxFallback() {
+  document.getElementById('file-input').setAttribute('accept', '.json');
+  const dz = document.getElementById('drop-zone');
+  dz.querySelector('p:first-child').textContent = '⚠️ โหลด SheetJS ไม่ได้ (ต้องมีอินเทอร์เน็ต) — รองรับแค่ .json';
+}
+</script>
+
+<script>
+// ── Constants (must match pokker_encoder.py and GDScript) ────────────────────
+const MAGIC      = [0x50, 0x4F, 0x4B, 0x52]; // "POKR"
+const VERSION    = 1;
+const IMG_W      = 512;
+const IMG_H      = 512;
+const HDR_ROWS   = 64;
+const DATA_ROWS  = IMG_H - HDR_ROWS;   // 448
+const DATA_BYTES = IMG_W * DATA_ROWS * 3; // 688,128
+const META_SIZE  = 88;
+const MAX_PAYLOAD = DATA_BYTES - META_SIZE;
+
+const CAT_COLORS = {
+  question: [63,127,176], command: [216,132,47],
+  deeptalk: [125,95,178], drink:   [47,154,147],
+  minigame: [95,154,66],  secret:  [79,99,176],
+  skinship: [207,95,147], special: [201,150,47],
+  oops:     [207,59,44],
+};
+const DEFAULT_CAT = [138, 109, 86];
+const BG_COLOR    = [240, 235, 228];
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let cards = [];
+
+// ── File input ────────────────────────────────────────────────────────────────
+document.getElementById('file-input').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (f) handleFile(f);
+});
+
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+
+async function handleFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  let parsed = [];
+
+  try {
+    if (ext === 'json') {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      parsed = Array.isArray(data) ? data
+             : (data.cards || data.data || data.items || []);
+      if (!Array.isArray(parsed)) throw new Error('JSON ต้องเป็น Array');
+
+    } else if (ext === 'xlsx' || ext === 'xls') {
+      if (typeof XLSX === 'undefined') {
+        alert('ต้องมีอินเทอร์เน็ตเพื่อโหลด SheetJS สำหรับ Excel'); return;
+      }
+      const buf  = await file.arrayBuffer();
+      const wb   = XLSX.read(buf, { type: 'array' });
+      const ws   = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      parsed = excelRowsToCards(rows);
+
+    } else {
+      alert('รองรับเฉพาะ .xlsx, .xls และ .json'); return;
+    }
+  } catch(err) {
+    alert('อ่านไฟล์ไม่สำเร็จ: ' + err.message); return;
+  }
+
+  if (!parsed.length) {
+    alert('ไม่พบการ์ดในไฟล์'); return;
+  }
+
+  cards = parsed;
+  const cats = new Set(cards.map(c => c.Category || c.category || ''));
+
+  document.getElementById('fname').textContent       = file.name;
+  document.getElementById('card-count').textContent  = cards.length;
+  document.getElementById('cat-count').textContent   = [...cats].join(', ');
+  document.getElementById('file-info').style.display = 'block';
+  document.getElementById('btn-encode').disabled     = false;
+
+  if (!document.getElementById('set-name').value) {
+    document.getElementById('set-name').value = file.name.replace(/\.[^.]+$/, '');
+  }
+
+  renderPreview(cards.slice(0, 20));
+  updateInfo();
+}
+
+function colFind(row, ...keys) {
+  for (const k of keys) {
+    const lk = k.toLowerCase();
+    for (const rk of Object.keys(row)) {
+      if (rk.trim().toLowerCase() === lk && row[rk] !== '' && row[rk] != null)
+        return String(row[rk]).trim();
+    }
+  }
+  return '';
+}
+
+function excelRowsToCards(rows) {
+  const counters = {};
+  return rows.filter(r => colFind(r, 'เนื้อหา','content','คำถาม','คำสั่ง')).map(r => {
+    const cat    = colFind(r, 'หมวดหมู่','category','หมวด') || 'General';
+    const prefix = cat[0].toUpperCase();
+    counters[prefix] = (counters[prefix] || 0) + 1;
+    return {
+      id:         `${prefix}${String(counters[prefix]).padStart(4,'0')}`,
+      Category:   cat.charAt(0).toUpperCase() + cat.slice(1),
+      Target:     colFind(r, 'เป้าหมาย','target','ผู้ถูกกระทำ'),
+      Content:    colFind(r, 'เนื้อหา','content','คำถาม','คำสั่ง'),
+      Penalty:    colFind(r, 'โทษ','penalty','บทลงโทษ'),
+      TargetType: 'Condition',
+    };
+  });
+}
+
+function updateInfo() {
+  if (!cards.length) return;
+  const payload    = new TextEncoder().encode(JSON.stringify(cards));
+  const nImages    = Math.max(1, Math.ceil(payload.length / MAX_PAYLOAD));
+  const statusSec  = document.getElementById('status-section');
+  const multiWarn  = document.getElementById('multi-warn');
+  const genInfo    = document.getElementById('gen-info');
+
+  statusSec.style.display = 'block';
+
+  if (nImages > 1) {
+    multiWarn.style.display = 'block';
+    multiWarn.innerHTML = `⚠️ ข้อมูลมีขนาดใหญ่ (${(payload.length/1024).toFixed(1)} KB) → จะสร้าง <strong>${nImages} ภาพ</strong><br>
+      ผู้ใช้ต้อง <strong>เลือกทุกภาพพร้อมกัน</strong> เมื่อ import ในเกม`;
+  } else {
+    multiWarn.style.display = 'none';
+  }
+  genInfo.style.display = 'block';
+  genInfo.innerHTML = `📦 ขนาด payload: ${(payload.length/1024).toFixed(1)} KB &nbsp;|&nbsp;
+    🖼️ จำนวนภาพ: <strong>${nImages}</strong> ภาพ &nbsp;|&nbsp;
+    🃏 ${cards.length} ใบ`;
+}
+
+// ── Encoder ───────────────────────────────────────────────────────────────────
+
+function doEncode() {
+  if (!cards.length) return;
+  const setName = document.getElementById('set-name').value.trim() || 'Pokker Cards';
+  const creator = document.getElementById('creator').value.trim();
+
+  const payload  = new TextEncoder().encode(JSON.stringify(cards));
+  const fullLen  = payload.length;
+  const nImages  = Math.max(1, Math.ceil(fullLen / MAX_PAYLOAD));
+  const setId    = (Math.random() * 0xFFFFFFFF) >>> 0;
+
+  const resultDiv    = document.getElementById('result-section');
+  const resultImages = document.getElementById('result-images');
+  const resultMsg    = document.getElementById('result-msg');
+
+  resultImages.innerHTML = '';
+  resultDiv.style.display = 'block';
+
+  for (let idx = 0; idx < nImages; idx++) {
+    const off      = idx * MAX_PAYLOAD;
+    const chunk    = payload.slice(off, off + MAX_PAYLOAD);
+    const meta     = buildMeta(idx, nImages, setId, off, chunk.length, fullLen, setName, creator);
+    const dataBuf  = concat(meta, chunk);
+
+    const canvas = encodeToCanvas(dataBuf, setName, creator, idx, nImages, cards);
+
+    const fname  = nImages === 1
+      ? `${sanitize(setName)}.png`
+      : `${sanitize(setName)}_${idx+1}of${nImages}.png`;
+
+    const item = document.createElement('div');
+    item.className = 'result-item';
+
+    const small = document.createElement('canvas');
+    small.width  = 160; small.height = 160;
+    small.getContext('2d').drawImage(canvas, 0, 0, 160, 160);
+    item.appendChild(small);
+
+    const a = document.createElement('a');
+    a.href     = canvas.toDataURL('image/png');
+    a.download = fname;
+    a.textContent = `⬇ ${fname}`;
+    item.appendChild(a);
+
+    resultImages.appendChild(item);
+  }
+
+  const msg = nImages === 1
+    ? `✅ สร้างสำเร็จ! คลิกลิงก์ด้านล่างเพื่อดาวน์โหลดภาพ`
+    : `✅ สร้าง ${nImages} ภาพ — ดาวน์โหลดทุกภาพแล้ว import พร้อมกันในเกม`;
+  resultMsg.textContent = msg;
+
+  resultDiv.scrollIntoView({ behavior: 'smooth' });
+}
+
+function buildMeta(imgIdx, imgTotal, setId, chunkOff, chunkLen, fullLen, setName, creator) {
+  const buf = new Uint8Array(META_SIZE);
+  // Magic "POKR"
+  buf[0]=0x50; buf[1]=0x4F; buf[2]=0x4B; buf[3]=0x52;
+  // Version, img_idx, img_total, flags
+  buf[4]=VERSION; buf[5]=imgIdx; buf[6]=imgTotal; buf[7]=0;
+  // set_id (uint32 LE)
+  writeU32LE(buf, 8,  setId);
+  writeU32LE(buf, 12, chunkOff);
+  writeU32LE(buf, 16, chunkLen);
+  writeU32LE(buf, 20, fullLen);
+  // set_name (32 bytes)
+  const nb = encodeFixed(setName, 32);
+  buf.set(nb, 24);
+  // creator (32 bytes)
+  const cb = encodeFixed(creator, 32);
+  buf.set(cb, 56);
+  return buf;
+}
+
+function writeU32LE(arr, off, val) {
+  arr[off]   =  val        & 0xFF;
+  arr[off+1] = (val >>  8) & 0xFF;
+  arr[off+2] = (val >> 16) & 0xFF;
+  arr[off+3] = (val >> 24) & 0xFF;
+}
+
+function encodeFixed(str, len) {
+  const b   = new TextEncoder().encode(str);
+  const out = new Uint8Array(len);
+  out.set(b.slice(0, len));
+  return out;
+}
+
+function concat(a, b) {
+  const out = new Uint8Array(a.length + b.length);
+  out.set(a, 0); out.set(b, a.length);
+  return out;
+}
+
+function encodeToCanvas(dataBytes, setName, creator, idx, nImages, cards) {
+  const canvas = document.createElement('canvas');
+  canvas.width = IMG_W; canvas.height = IMG_H;
+  const ctx = canvas.getContext('2d');
+
+  // ── Pixel buffer ───────────────────────────────────────────────────────────
+  const imgData = ctx.createImageData(IMG_W, IMG_H);
+  const px      = imgData.data;  // RGBA
+
+  // Background fill
+  for (let i = 0; i < IMG_W * IMG_H; i++) {
+    px[i*4]   = BG_COLOR[0];
+    px[i*4+1] = BG_COLOR[1];
+    px[i*4+2] = BG_COLOR[2];
+    px[i*4+3] = 255;
+  }
+
+  // Header rows with category color
+  const firstCat = ((cards[0] && cards[0].Category) || '').toLowerCase();
+  const hdr = CAT_COLORS[firstCat] || DEFAULT_CAT;
+  for (let row = 0; row < HDR_ROWS; row++) {
+    for (let col = 0; col < IMG_W; col++) {
+      const base = (row * IMG_W + col) * 4;
+      px[base] = hdr[0]; px[base+1] = hdr[1]; px[base+2] = hdr[2]; px[base+3] = 255;
+    }
+  }
+
+  // Write encoded data into data region
+  const dataStart = HDR_ROWS * IMG_W;  // pixel index
+  for (let i = 0; i < dataBytes.length; i++) {
+    const pxIdx = dataStart + Math.floor(i / 3);
+    const ch    = i % 3;
+    px[pxIdx*4 + ch] = dataBytes[i];
+  }
+
+  ctx.putImageData(imgData, 0, 0);
+
+  // ── Visual header text (drawn on top of header color) ──────────────────────
+  const displayName = nImages > 1 ? `${setName}  (${idx+1}/${nImages})` : setName;
+
+  ctx.font = 'bold 20px sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.fillText(displayName, 12, 28);
+
+  if (creator) {
+    ctx.font = '14px sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.fillText('by ' + creator, 12, 52);
+  }
+
+  return canvas;
+}
+
+function sanitize(s) {
+  return s.replace(/[^\w฀-๿\s-]/g, '_').replace(/\s+/g, '_').trim() || 'pokker_cards';
+}
+
+// ── Preview table ─────────────────────────────────────────────────────────────
+function renderPreview(sample) {
+  const catColors = {
+    Question:'#3f7fb0', Command:'#d8842f', Deeptalk:'#7d5fb2',
+    Drink:'#2f9a93', Minigame:'#5f9a42', Secret:'#4f63b0',
+    Skinship:'#cf5f93', Special:'#c9962f', Oops:'#cf3b2c',
+  };
+
+  let html = '<table class="preview-table"><thead><tr>'
+    + '<th>ID</th><th>หมวด</th><th>เป้าหมาย</th><th>เนื้อหา</th><th>โทษ</th>'
+    + '</tr></thead><tbody>';
+
+  for (const c of sample) {
+    const cat = c.Category || '';
+    const col = catColors[cat] || '#8a6d56';
+    html += `<tr>
+      <td style="font-size:11px;color:#aaa">${c.id || ''}</td>
+      <td><span class="chip" style="background:${col}">${cat}</span></td>
+      <td>${c.Target || ''}</td>
+      <td>${c.Content || ''}</td>
+      <td style="color:#c06020">${c.Penalty || ''}</td>
+    </tr>`;
+  }
+
+  html += '</tbody></table>';
+  document.getElementById('preview-table-wrap').innerHTML = html;
+  document.getElementById('preview-card').style.display = 'block';
+}
+</script>
+</body>
+</html>

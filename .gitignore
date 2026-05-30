@@ -1,0 +1,4 @@
+﻿Pokker Card Encoder.exe
+_build_tmp/
+__pycache__/
+*.spec
