@@ -33,12 +33,12 @@ except ImportError:
 
 # ── Format constants  (must match Godot decoder) ──────────────────────────────
 MAGIC       = b'POKR'
-VERSION     = 1
+VERSION     = 2
 IMG_W       = 512
 IMG_H       = 512
 HDR_ROWS    = 64
 DATA_BYTES  = IMG_W * (IMG_H - HDR_ROWS) * 3
-META_SIZE   = 88
+META_SIZE   = 120
 MAX_PAYLOAD = DATA_BYTES - META_SIZE
 
 CAT_COLORS = {
@@ -118,9 +118,24 @@ def read_json(path: str) -> list:
 
 # ── Encoder ───────────────────────────────────────────────────────────────────
 
+def _utf8_safe_bytes(s: str, max_bytes: int) -> bytes:
+    b = s.encode("utf-8")
+    if len(b) <= max_bytes:
+        return b
+    n = max_bytes
+    while n > 0 and (b[n - 1] & 0xC0) == 0x80:
+        n -= 1
+    if n > 0:
+        lead = b[n - 1]
+        seq_len = 4 if (lead & 0xF8) == 0xF0 else 3 if (lead & 0xF0) == 0xE0 else 2 if (lead & 0xE0) == 0xC0 else 1
+        if n - 1 + seq_len > max_bytes:
+            n -= 1
+    return b[:n]
+
+
 def _build_meta(idx, total, set_id, off, chunk_len, full_len, name, creator) -> bytes:
-    nb   = name.encode("utf-8")[:32].ljust(32, b"\x00")
-    cb   = creator.encode("utf-8")[:32].ljust(32, b"\x00")
+    nb   = _utf8_safe_bytes(name,    64).ljust(64, b"\x00")
+    cb   = _utf8_safe_bytes(creator, 32).ljust(32, b"\x00")
     meta = (MAGIC
             + struct.pack("<BBBBI", VERSION, idx, total, 0, set_id)
             + struct.pack("<III",   off, chunk_len, full_len)

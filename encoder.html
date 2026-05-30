@@ -148,13 +148,13 @@ function xlsxFallback() {
 <script>
 // ── Constants (must match pokker_encoder.py and GDScript) ────────────────────
 const MAGIC      = [0x50, 0x4F, 0x4B, 0x52]; // "POKR"
-const VERSION    = 1;
+const VERSION    = 2;
 const IMG_W      = 512;
 const IMG_H      = 512;
 const HDR_ROWS   = 64;
 const DATA_ROWS  = IMG_H - HDR_ROWS;   // 448
 const DATA_BYTES = IMG_W * DATA_ROWS * 3; // 688,128
-const META_SIZE  = 88;
+const META_SIZE  = 120;
 const MAX_PAYLOAD = DATA_BYTES - META_SIZE;
 
 const CAT_COLORS = {
@@ -353,12 +353,12 @@ function buildMeta(imgIdx, imgTotal, setId, chunkOff, chunkLen, fullLen, setName
   writeU32LE(buf, 12, chunkOff);
   writeU32LE(buf, 16, chunkLen);
   writeU32LE(buf, 20, fullLen);
-  // set_name (32 bytes)
-  const nb = encodeFixed(setName, 32);
+  // set_name (64 bytes)
+  const nb = encodeFixed(setName, 64);
   buf.set(nb, 24);
   // creator (32 bytes)
   const cb = encodeFixed(creator, 32);
-  buf.set(cb, 56);
+  buf.set(cb, 88);
   return buf;
 }
 
@@ -372,7 +372,14 @@ function writeU32LE(arr, off, val) {
 function encodeFixed(str, len) {
   const b   = new TextEncoder().encode(str);
   const out = new Uint8Array(len);
-  out.set(b.slice(0, len));
+  let n = Math.min(b.length, len);
+  // Trim to valid UTF-8 boundary (don't cut in the middle of a multi-byte sequence)
+  let i = n - 1;
+  while (i > 0 && (b[i] & 0xC0) === 0x80) i--;
+  const lead = b[i] & 0xFF;
+  const seqLen = lead < 0x80 ? 1 : lead < 0xE0 ? 2 : lead < 0xF0 ? 3 : 4;
+  if (i + seqLen > n) n = i;
+  out.set(b.slice(0, n));
   return out;
 }
 
